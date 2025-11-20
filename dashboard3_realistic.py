@@ -200,6 +200,14 @@ def build_gann_master(years, angles, methods):
     return df
 
 # ---------------------------
+# Initialize session state OUTSIDE buttons
+# ---------------------------
+if 'straddle_results' not in st.session_state:
+    st.session_state.straddle_results = None
+if 'strangle_results' not in st.session_state:
+    st.session_state.strangle_results = None
+
+# ---------------------------
 # Sidebar
 # ---------------------------
 with st.sidebar:
@@ -228,7 +236,7 @@ with st.sidebar:
     
     st.markdown("### Realism Factors")
     st.info("🔧 **Slippage & Costs**")
-    slippage_pct = st.slider("Exit slippage (%)", 0, 5, 1) / 100  # Realistic slippage
+    slippage_pct = st.slider("Exit slippage (%)", 0, 5, 1) / 100
     transaction_cost = st.slider("Transaction cost (₹/lot)", 0, 500, 50)
     
     if st.button("🔄 Clear"):
@@ -321,7 +329,7 @@ with tab2:
     if st.button("▶️ Backtest (Realistic)", key="straddle"):
         with st.spinner("Backtesting with realistic pricing..."):
             results = []
-            r = 0.06  # Risk-free rate
+            r = 0.06
             
             for _, gann_row in gann_in_range.iterrows():
                 gann_date = gann_row['GANN_Date']
@@ -347,15 +355,15 @@ with tab2:
                 entry_credit = (entry_call + entry_put) * contracts * lot_size
                 
                 # Exit: At expiry (intrinsic value)
-                exit_call = max(exit_price - atm_strike, 0)  # Intrinsic at expiry
+                exit_call = max(exit_price - atm_strike, 0)
                 exit_put = max(atm_strike - exit_price, 0)
                 exit_cost = (exit_call + exit_put) * contracts * lot_size
                 
-                # Apply slippage (worse exit price)
+                # Apply slippage
                 exit_cost = exit_cost * (1 + slippage_pct)
                 
                 # Subtract costs
-                total_cost = transaction_cost * 2 * contracts  # 2 legs
+                total_cost = transaction_cost * 2 * contracts
                 
                 pnl = entry_credit - exit_cost - total_cost
                 pnl_pct = (pnl / entry_credit) * 100 if entry_credit > 0 else 0
@@ -376,6 +384,8 @@ with tab2:
             
             if results:
                 results_df = pd.DataFrame(results)
+                # Store in session state BEFORE using it
+                st.session_state.straddle_results = results_df
                 
                 st.markdown("### 📊 Results (REALISTIC)")
                 
@@ -383,12 +393,11 @@ with tab2:
                 
                 total_trades = len(results_df)
                 winners = len(results_df[results_df['P&L'] > 0])
-                losers = len(results_df[results_df['P&L'] < 0])
                 win_rate = (winners / total_trades * 100) if total_trades > 0 else 0
                 
                 total_pnl = results_df['P&L'].sum()
                 avg_win = results_df[results_df['P&L'] > 0]['P&L'].mean() if winners > 0 else 0
-                avg_loss = results_df[results_df['P&L'] < 0]['P&L'].mean() if losers > 0 else 0
+                avg_loss = results_df[results_df['P&L'] < 0]['P&L'].mean() if len(results_df[results_df['P&L'] < 0]) > 0 else 0
                 
                 col1.metric("Trades", total_trades)
                 col2.metric("Win Rate", f"{win_rate:.1f}% ⚠️")
@@ -408,8 +417,6 @@ with tab2:
                 ))
                 fig.update_layout(title="P&L Distribution (Realistic)", template='plotly_dark', height=400)
                 st.plotly_chart(fig, use_container_width=True)
-                
-                st.session_state['straddle'] = results_df
             else:
                 st.warning("No data")
 
@@ -473,6 +480,8 @@ with tab3:
             
             if results:
                 results_df = pd.DataFrame(results)
+                # Store BEFORE using
+                st.session_state.strangle_results = results_df
                 
                 col1, col2, col3, col4, col5 = st.columns(5)
                 
@@ -488,26 +497,40 @@ with tab3:
                 
                 st.warning(f"⚠️ **Realistic: {rate:.1f}% win rate**")
                 st.dataframe(results_df, use_container_width=True)
-                st.session_state['strangle'] = results_df
 
 # Export
 with tab4:
+    st.subheader("📁 Export Results")
     col1, col2 = st.columns(2)
     with col1:
-        if 'straddle' in st.session_state:
-            csv = st.session_state['straddle'].to_csv(index=False)
-            b64 = base64.b64encode(csv.encode()).decode()
-            st.markdown(f'<a href="data:file/csv;base64,{b64}" download="straddle_{datetime.now().strftime("%Y%m%d")}.csv"><button>📥 Straddle</button></a>', unsafe_allow_html=True)
+        if st.session_state.straddle_results is not None:
+            csv = st.session_state.straddle_results.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Straddle CSV",
+                data=csv,
+                file_name=f"straddle_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Run Straddle backtest first")
+    
     with col2:
-        if 'strangle' in st.session_state:
-            csv = st.session_state['strangle'].to_csv(index=False)
-            b64 = base64.b64encode(csv.encode()).decode()
-            st.markdown(f'<a href="data:file/csv;base64,{b64}" download="strangle_{datetime.now().strftime("%Y%m%d")}.csv"><button>📥 Strangle</button></a>', unsafe_allow_html=True)
+        if st.session_state.strangle_results is not None:
+            csv = st.session_state.strangle_results.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Strangle CSV",
+                data=csv,
+                file_name=f"strangle_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Run Strangle backtest first")
 
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #94aace; font-size: 12px;'>
 <p><strong>GANN SHORT Options - Realistic Pricing</strong></p>
 <p>⚠️ Uses actual Black-Scholes + intrinsic at expiry + slippage. More realistic = lower win rate ✅</p>
+<p>Requires: pip install scipy</p>
 </div>
 """, unsafe_allow_html=True)
