@@ -15,7 +15,11 @@ import plotly.express as px
 from datetime import datetime, date, timedelta, time as dt_time
 from dateutil.relativedelta import relativedelta
 from fpdf import FPDF
-import io, base64, time, traceback, math
+import io
+import base64
+import time
+import traceback
+import math
 
 # ---------------------------
 # App config + CSS
@@ -50,4 +54,4 @@ def safe_fmt(val, fmt="{:.2f}", na="N/A"):
         return na
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def yf_download_robust(ticker, start
+def yf_downl
